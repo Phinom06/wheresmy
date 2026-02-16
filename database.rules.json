@@ -1,0 +1,15 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomCode": {
+        "items": {
+          ".read": true,
+          ".write": true,
+          "$itemId": {
+            ".validate": "newData.hasChildren(['id', 'name', 'location', 'updatedAt'])"
+          }
+        }
+      }
+    }
+  }
+}
