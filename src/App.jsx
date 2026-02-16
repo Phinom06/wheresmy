@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { generateRoomCode, subscribeToRoom, roomExists, setRoomItems, setItem, deleteItemFromRoom } from './firebase'
 import './App.css'
 
-const STORAGE_KEY = 'wheresmy-items'
+const ROOM_CODE_KEY = 'wheresmy-room'
 
 const DEMO_ITEMS = [
   { id: 1, name: 'Keys', icon: '🔑', location: 'Front door hook', updatedAt: Date.now() - 1000 * 60 * 12, history: [{ location: 'Front door hook', timestamp: Date.now() - 1000 * 60 * 12 }, { location: 'Kitchen counter', timestamp: Date.now() - 1000 * 60 * 60 * 26 }] },
@@ -11,23 +12,6 @@ const DEMO_ITEMS = [
   { id: 5, name: 'Charger', icon: '🔌', location: 'Desk', updatedAt: Date.now() - 1000 * 60 * 60 * 7, history: [{ location: 'Desk', timestamp: Date.now() - 1000 * 60 * 60 * 7 }] },
   { id: 6, name: 'Water bottle', icon: '🥤', location: 'Car', updatedAt: Date.now() - 1000 * 60 * 60 * 24, history: [{ location: 'Car', timestamp: Date.now() - 1000 * 60 * 60 * 24 }, { location: 'Kitchen counter', timestamp: Date.now() - 1000 * 60 * 60 * 48 }] },
 ]
-
-function loadItems() {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY)
-    const parsed = data ? JSON.parse(data) : null
-    if (parsed && parsed.length > 0) return parsed
-    // Seed with demo items on first visit
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEMO_ITEMS))
-    return DEMO_ITEMS
-  } catch {
-    return []
-  }
-}
-
-function saveItems(items) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
-}
 
 function timeAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000)
@@ -78,7 +62,12 @@ const SUGGESTED_ITEMS = [
 const SUGGESTED_LOCATIONS = ['Kitchen counter', 'Nightstand', 'Couch', 'Front door hook', 'Purse', 'Car', 'Desk', 'Bathroom']
 
 function App() {
-  const [items, setItems] = useState(loadItems)
+  const [roomCode, setRoomCode] = useState(() => localStorage.getItem(ROOM_CODE_KEY) || '')
+  const [roomInput, setRoomInput] = useState('')
+  const [roomLoading, setRoomLoading] = useState(false)
+  const [roomError, setRoomError] = useState('')
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [view, setView] = useState('home')
   const [selectedItem, setSelectedItem] = useState(null)
@@ -87,11 +76,79 @@ function App() {
   const [editingLocation, setEditingLocation] = useState(false)
   const [editLocation, setEditLocation] = useState('')
 
+  // Subscribe to Firebase when roomCode is set
   useEffect(() => {
-    saveItems(items)
-  }, [items])
+    if (!roomCode) {
+      setItems([])
+      setLoading(false)
+      return
+    }
 
-  const addItem = () => {
+    setLoading(true)
+    const unsubscribe = subscribeToRoom(roomCode, (newItems) => {
+      setItems(newItems)
+      setLoading(false)
+    })
+
+    return () => unsubscribe()
+  }, [roomCode])
+
+  const joinRoom = useCallback(async (code) => {
+    const cleaned = code.trim().toUpperCase()
+    if (!cleaned || cleaned.length < 3) {
+      setRoomError('Enter a room code (at least 3 characters)')
+      return
+    }
+    setRoomLoading(true)
+    setRoomError('')
+    try {
+      const exists = await roomExists(cleaned)
+      if (!exists) {
+        setRoomError(`Room "${cleaned}" doesn't exist yet. Create it instead?`)
+        setRoomLoading(false)
+        return
+      }
+      localStorage.setItem(ROOM_CODE_KEY, cleaned)
+      setRoomCode(cleaned)
+    } catch {
+      setRoomError('Could not connect. Check your internet and try again.')
+    }
+    setRoomLoading(false)
+  }, [])
+
+  const createRoom = useCallback(async (code) => {
+    const cleaned = (code || generateRoomCode()).trim().toUpperCase()
+    setRoomLoading(true)
+    setRoomError('')
+    try {
+      const exists = await roomExists(cleaned)
+      if (exists) {
+        // Room already exists, just join it
+        localStorage.setItem(ROOM_CODE_KEY, cleaned)
+        setRoomCode(cleaned)
+        setRoomLoading(false)
+        return
+      }
+      // Seed with demo items
+      await setRoomItems(cleaned, DEMO_ITEMS)
+      localStorage.setItem(ROOM_CODE_KEY, cleaned)
+      setRoomCode(cleaned)
+    } catch {
+      setRoomError('Could not create room. Check your internet and try again.')
+    }
+    setRoomLoading(false)
+  }, [])
+
+  const leaveRoom = useCallback(() => {
+    localStorage.removeItem(ROOM_CODE_KEY)
+    setRoomCode('')
+    setItems([])
+    setView('home')
+    setSelectedItem(null)
+    setSearch('')
+  }, [])
+
+  const addItem = async () => {
     if (!newName.trim() || !newLocation.trim()) return
     const item = {
       id: Date.now(),
@@ -101,44 +158,33 @@ function App() {
       updatedAt: Date.now(),
       history: [{ location: newLocation.trim(), timestamp: Date.now() }],
     }
-    setItems(prev => [item, ...prev])
+    await setItem(roomCode, item)
     setNewName('')
     setNewLocation('')
     setView('home')
   }
 
-  const updateLocation = (id) => {
+  const updateLocation = async (id) => {
     if (!editLocation.trim()) return
-    setItems(prev =>
-      prev.map(item =>
-        item.id === id
-          ? {
-              ...item,
-              location: editLocation.trim(),
-              updatedAt: Date.now(),
-              history: [
-                { location: editLocation.trim(), timestamp: Date.now() },
-                ...item.history,
-              ],
-            }
-          : item
-      )
-    )
-    setSelectedItem(prev => ({
-      ...prev,
+    const item = items.find(i => i.id === id)
+    if (!item) return
+    const updated = {
+      ...item,
       location: editLocation.trim(),
       updatedAt: Date.now(),
       history: [
         { location: editLocation.trim(), timestamp: Date.now() },
-        ...prev.history,
+        ...(item.history || []),
       ],
-    }))
+    }
+    await setItem(roomCode, updated)
+    setSelectedItem(updated)
     setEditingLocation(false)
     setEditLocation('')
   }
 
-  const deleteItem = (id) => {
-    setItems(prev => prev.filter(item => item.id !== id))
+  const deleteItem = async (id) => {
+    await deleteItemFromRoom(roomCode, id)
     setView('home')
     setSelectedItem(null)
   }
@@ -147,6 +193,62 @@ function App() {
     item.name.toLowerCase().includes(search.toLowerCase()) ||
     item.location.toLowerCase().includes(search.toLowerCase())
   )
+
+  // --- ROOM SCREEN ---
+  if (!roomCode) {
+    return (
+      <div className="app">
+        <header className="app-header home-header">
+          <div>
+            <h1>Where's My...?</h1>
+            <p className="subtitle">Never lose your stuff again</p>
+          </div>
+        </header>
+        <main className="room-screen">
+          <div className="room-hero">
+            <div className="room-hero-icon">🏠</div>
+            <h2>Share a list with someone</h2>
+            <p>Enter the same room code on both devices to share and sync your items in real-time.</p>
+          </div>
+
+          <div className="room-form">
+            <label>Room Code</label>
+            <input
+              type="text"
+              placeholder="e.g. ABC123"
+              value={roomInput}
+              onChange={e => { setRoomInput(e.target.value.toUpperCase()); setRoomError('') }}
+              onKeyDown={e => e.key === 'Enter' && joinRoom(roomInput)}
+              maxLength={10}
+              autoFocus
+              style={{ textTransform: 'uppercase', letterSpacing: '0.15em', textAlign: 'center', fontSize: '1.2rem' }}
+            />
+            {roomError && <p className="room-error">{roomError}</p>}
+
+            <button
+              className="primary-btn"
+              onClick={() => joinRoom(roomInput)}
+              disabled={roomLoading || !roomInput.trim()}
+            >
+              {roomLoading ? 'Connecting...' : 'Join Room'}
+            </button>
+
+            <div className="room-divider">
+              <span>or</span>
+            </div>
+
+            <button
+              className="secondary-btn room-create-btn"
+              onClick={() => createRoom(roomInput.trim() || null)}
+              disabled={roomLoading}
+            >
+              {roomInput.trim() ? `Create "${roomInput.trim().toUpperCase()}"` : 'Create New Room'}
+            </button>
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   // --- ADD VIEW ---
   if (view === 'add') {
@@ -252,7 +354,7 @@ function App() {
             </button>
           )}
 
-          {item.history.length > 1 && (
+          {item.history && item.history.length > 1 && (
             <div className="history">
               <h3>Location History</h3>
               <div className="timeline">
@@ -285,6 +387,11 @@ function App() {
           <h1>Where's My...?</h1>
           <p className="subtitle">Never lose your stuff again</p>
         </div>
+        <button className="room-badge" onClick={leaveRoom} title="Leave room">
+          <span className="room-badge-icon">🏠</span>
+          <span className="room-badge-code">{roomCode}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
       </header>
       <main>
         <div className="search-bar">
@@ -298,7 +405,14 @@ function App() {
           {search && <button className="clear-btn" onClick={() => setSearch('')}>✕</button>}
         </div>
 
-        {filtered.length === 0 && !search && (
+        {loading && (
+          <div className="empty-state">
+            <div className="empty-icon">⏳</div>
+            <p className="empty-title">Loading items...</p>
+          </div>
+        )}
+
+        {!loading && filtered.length === 0 && !search && (
           <div className="empty-state">
             <div className="empty-icon">📦</div>
             <p className="empty-title">No items tracked yet</p>
@@ -306,7 +420,7 @@ function App() {
           </div>
         )}
 
-        {filtered.length === 0 && search && (
+        {!loading && filtered.length === 0 && search && (
           <div className="empty-state">
             <p className="empty-title">No items match "{search}"</p>
           </div>

@@ -636,3 +636,134 @@
   color: var(--text-light);
   font-weight: 500;
 }
+
+/* ===== ROOM SCREEN ===== */
+.room-screen {
+  padding: 24px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeInUp 0.3s ease;
+}
+
+.room-hero {
+  text-align: center;
+  padding: 16px 0 8px;
+}
+
+.room-hero-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+  animation: float 3s ease-in-out infinite;
+}
+
+.room-hero h2 {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.room-hero p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.room-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.room-form label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.room-form input {
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  background: var(--card-bg-solid);
+  outline: none;
+  transition: all 0.3s ease;
+  font-weight: 700;
+  font-family: 'Inter', monospace;
+}
+
+.room-form input::placeholder {
+  color: var(--text-light);
+  font-weight: 400;
+}
+
+.room-form input:focus {
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.room-error {
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.room-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 4px 0;
+}
+
+.room-divider::before,
+.room-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.room-divider span {
+  font-size: 0.82rem;
+  color: var(--text-light);
+  font-weight: 500;
+}
+
+.room-create-btn {
+  text-align: center;
+}
+
+/* ===== ROOM BADGE (header) ===== */
+.room-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.18);
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  position: relative;
+  z-index: 1;
+}
+
+.room-badge:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.room-badge-icon {
+  font-size: 0.9rem;
+}
+
+.room-badge-code {
+  letter-spacing: 0.08em;
+  font-family: 'Inter', monospace;
+}
