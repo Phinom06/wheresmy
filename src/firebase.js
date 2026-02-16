@@ -30,15 +30,16 @@ function roomItemsRef(roomCode) {
 }
 
 // Subscribe to room items in real-time. Returns an unsubscribe function.
-export function subscribeToRoom(roomCode, callback) {
+export function subscribeToRoom(roomCode, callback, onError) {
   const itemsRef = roomItemsRef(roomCode)
   const unsubscribe = onValue(itemsRef, (snapshot) => {
     const data = snapshot.val()
-    // Convert object to array, or empty array if null
     const items = data ? Object.values(data) : []
-    // Sort by updatedAt descending (newest first)
     items.sort((a, b) => b.updatedAt - a.updatedAt)
     callback(items)
+  }, (error) => {
+    console.error('Firebase subscription error:', error)
+    if (onError) onError(error)
   })
   return unsubscribe
 }

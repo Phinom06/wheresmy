@@ -88,6 +88,9 @@ function App() {
     const unsubscribe = subscribeToRoom(roomCode, (newItems) => {
       setItems(newItems)
       setLoading(false)
+    }, (error) => {
+      console.error('[WheresMyApp] Firebase error:', error)
+      setLoading(false)
     })
 
     return () => unsubscribe()
